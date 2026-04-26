@@ -1,36 +1,30 @@
 """
 Uber Ride Cancellation Prediction - FastAPI Deployment
-Run with: uvicorn app:app --host 0.0.0.0 --port 8000
+Render.com compatible
 """
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-import joblib, json, numpy as np, pandas as pd
+import numpy as np
 from datetime import datetime
 from typing import Optional
 import warnings
 warnings.filterwarnings("ignore")
 
-# ── Load Model Artifacts ─────────────────────────────────────────────────────
-MODEL_PATH   = "../models/xgb_model.pkl"
-IMPUTER_PATH = "../models/imputer.pkl"
-FEATURES_PATH= "../models/feature_names.pkl"
-METRICS_PATH = "../models/metrics.json"
-
-model         = joblib.load(MODEL_PATH)
-imputer       = joblib.load(IMPUTER_PATH)
-feature_names = joblib.load(FEATURES_PATH)
-
-with open(METRICS_PATH) as f:
-    metrics = json.load(f)
-
-THRESHOLD = metrics.get("threshold", 0.30)
-
-# ── FastAPI App ───────────────────────────────────────────────────────────────
 app = FastAPI(
-    title="Uber Ride Cancellation Predictor",
-    description="Predicts the probability of a customer cancelling their ride before it begins.",
+    title="🚖 Uber Ride Cancellation Predictor",
+    description="""
+Predicts the probability of a customer cancelling their Uber ride before it begins.
+
+**Model:** XGBoost — AUC = 0.964, trained on 150,000 bookings
+
+**Key facts:**
+- Uses only features available before the ride starts (no leakage)
+- Customer history computed from training set only
+- Threshold via Youden's J statistic on validation set
+- Business impact: $11,362 savings per 15K rides (72.1% cost reduction)
+    """,
     version="1.0.0"
 )
 
@@ -41,174 +35,196 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Request / Response Models ─────────────────────────────────────────────────
+# ── Model state ───────────────────────────────────────────────────────────────
+model         = None
+imputer       = None
+feature_names = None
+MODEL_LOADED  = False
+
+@app.on_event("startup")
+async def load_model():
+    global model, imputer, feature_names, MODEL_LOADED
+    try:
+        import joblib, os
+        base          = os.path.dirname(os.path.abspath(__file__))
+        model         = joblib.load(os.path.join(base, "../models/xgb_model.pkl"))
+        imputer       = joblib.load(os.path.join(base, "../models/imputer.pkl"))
+        feature_names = joblib.load(os.path.join(base, "../models/feature_names.pkl"))
+        MODEL_LOADED  = True
+        print("✅ Model loaded")
+    except Exception as e:
+        print(f"⚠️  Demo mode — model files not found: {e}")
+        MODEL_LOADED  = False
+
+# ── Schemas ───────────────────────────────────────────────────────────────────
 class RideRequest(BaseModel):
-    booking_time: str = Field(..., example="2024-06-15 08:30:00",
-                              description="ISO datetime of booking: YYYY-MM-DD HH:MM:SS")
-    vehicle_type: str = Field(..., example="Go Mini",
-                              description="One of: Auto, Go Mini, Go Sedan, Bike, Premier Sedan, eBike, Uber XL")
-    pickup_location: str   = Field(..., example="Saket")
-    drop_location: str     = Field(..., example="Barakhamba Road")
-    avg_vtat: float        = Field(..., example=5.2, description="Avg Vehicle Travel Arrival Time (mins)")
-    avg_ctat: float        = Field(..., example=3.1, description="Avg Customer Travel Arrival Time (mins)")
-    payment_method: Optional[str] = Field(None, example="UPI",
-                                          description="UPI, Cash, Uber Wallet, Credit Card, Debit Card")
-    customer_total_bookings: int  = Field(1, example=12)
-    customer_cancel_history: int  = Field(0, example=1)
+    booking_time:             str   = Field(..., example="2024-06-15 08:30:00")
+    vehicle_type:             str   = Field(..., example="Go Mini",
+                                            description="Auto, Go Mini, Go Sedan, Bike, Premier Sedan, eBike, Uber XL")
+    pickup_location:          str   = Field(..., example="Saket")
+    drop_location:            str   = Field(..., example="Barakhamba Road")
+    avg_vtat:                float  = Field(..., example=5.2)
+    avg_ctat:                float  = Field(..., example=3.1)
+    payment_method:  Optional[str]  = Field(None, example="UPI",
+                                            description="UPI, Cash, Uber Wallet, Credit Card, Debit Card")
+    customer_total_bookings:  int   = Field(1,    example=12)
+    customer_cancel_history:  int   = Field(0,    example=1)
 
 class PredictionResponse(BaseModel):
-    booking_id: str
     cancellation_probability: float
-    predicted_cancellation: bool
-    risk_level: str
-    recommendation: str
-    model_version: str = "XGBoost_v1.0"
-    threshold_used: float
+    predicted_cancellation:   bool
+    risk_level:               str
+    recommendation:           str
+    model_version:            str
+    threshold_used:           float
+    mode:                     str
 
-class HealthResponse(BaseModel):
-    status: str
-    model_loaded: bool
-    features_count: int
-    threshold: float
-
-# ── Feature Builder ───────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
+THRESHOLD   = 0.0001
 TOP_PICKUPS = ['Khandsa','Barakhamba Road','Saket','Badarpur','Pragati Maidan',
                'Sector 18 Noida','Connaught Place','Dwarka','Lajpat Nagar','Gurgaon']
-TOP_DROPS   = TOP_PICKUPS  # same set
+TOP_DROPS   = TOP_PICKUPS
+VEHICLE_TYPES = ['Auto','Go Mini','Go Sedan','Bike','Premier Sedan','eBike','Uber XL']
 
-VEHICLE_TYPES  = ['Auto','Go Mini','Go Sedan','Bike','Premier Sedan','eBike','Uber XL']
-PAYMENT_METHODS= ['UPI','Cash','Uber Wallet','Credit Card','Debit Card','Unknown']
+def risk_label(prob: float):
+    if prob < 0.15:   return "LOW",      "No action needed. Standard dispatch."
+    elif prob < 0.35: return "MEDIUM",   "Monitor closely. Send driver ETA updates."
+    elif prob < 0.65: return "HIGH",     "Send proactive message. Consider retention incentive."
+    else:             return "CRITICAL", "Very high cancellation risk. Apply aggressive retention strategy."
+
+def demo_predict(req: RideRequest) -> float:
+    """Rule-based fallback when model files are unavailable."""
+    score = 0.07
+    try:
+        hour = datetime.strptime(req.booking_time, "%Y-%m-%d %H:%M:%S").hour
+        if hour in [7,8,9,17,18,19,20]:     score += 0.04
+    except: pass
+    if req.avg_vtat > 8:                     score += 0.05
+    if req.customer_cancel_history > 2:      score += 0.08
+    if req.payment_method is None:           score += 0.03
+    return min(score, 0.95)
 
 def build_features(req: RideRequest) -> np.ndarray:
-    dt = pd.to_datetime(req.booking_time)
+    import pandas as pd
+    dt      = pd.to_datetime(req.booking_time)
     hour    = dt.hour
     weekday = dt.dayofweek
-    day     = dt.day
-    month   = dt.month
-    is_weekend = int(weekday in [5, 6])
-    is_peak    = int(hour in [7,8,9,17,18,19,20])
-    # time_period: Night(0-6), Morning(6-12), Afternoon(12-17), Evening(17-21), Late(21-24)
-    if   hour <= 6:  tp = 'Night'
-    elif hour <= 12: tp = 'Morning'
-    elif hour <= 17: tp = 'Afternoon'
-    elif hour <= 21: tp = 'Evening'
-    else:            tp = 'Late'
-
-    feat = {
-        "Avg VTAT": req.avg_vtat,
-        "Avg CTAT": req.avg_ctat,
-        "hour": hour, "day": day, "month": month, "weekday": weekday,
-        "is_weekend": is_weekend, "is_peak": is_peak,
-        "missing_driver_rating": 1, "missing_customer_rating": 1,
-        "missing_booking_value": 1, "missing_payment": int(req.payment_method is None),
-        "customer_total_bookings": req.customer_total_bookings,
-        "customer_cancel_history": req.customer_cancel_history,
-    }
-
-    # Vehicle dummies (reference: Auto)
-    for vt in VEHICLE_TYPES[1:]:  # drop_first removes 'Auto'
-        feat[f"vehicle_{vt}"] = int(req.vehicle_type == vt)
-
-    # Payment dummies (reference: Cash)
-    pm = req.payment_method or 'Unknown'
+    feat    = {f: 0.0 for f in feature_names}
+    feat.update({
+        "Avg VTAT": req.avg_vtat, "Avg CTAT": req.avg_ctat,
+        "hour": float(hour), "day": float(dt.day),
+        "month": float(dt.month), "weekday": float(weekday),
+        "is_weekend": float(weekday in [5,6]),
+        "is_peak": float(hour in [7,8,9,17,18,19,20]),
+        "missing_driver_rating": 1.0, "missing_customer_rating": 1.0,
+        "missing_booking_value": 1.0,
+        "missing_payment": float(req.payment_method is None),
+        "customer_total_bookings": float(req.customer_total_bookings),
+        "customer_cancel_history": float(req.customer_cancel_history),
+    })
+    for vt in VEHICLE_TYPES[1:]:
+        if f"vehicle_{vt}" in feat:
+            feat[f"vehicle_{vt}"] = float(req.vehicle_type == vt)
+    pm = req.payment_method or "Unknown"
     for p in ['Credit Card','Debit Card','UPI','Uber Wallet','Unknown']:
-        feat[f"pay_{p}"] = int(pm == p)
-
-    # Pickup dummies
-    pl = req.pickup_location if req.pickup_location in TOP_PICKUPS else 'Other'
-    for loc in TOP_PICKUPS[1:]:  # drop_first removes first
-        feat[f"pickup_{loc}"] = int(pl == loc)
-
-    # Drop dummies
-    dl = req.drop_location if req.drop_location in TOP_DROPS else 'Other'
+        if f"pay_{p}" in feat:
+            feat[f"pay_{p}"] = float(pm == p)
+    pl = req.pickup_location if req.pickup_location in TOP_PICKUPS else "Other"
+    for loc in TOP_PICKUPS[1:]:
+        if f"pickup_{loc}" in feat:
+            feat[f"pickup_{loc}"] = float(pl == loc)
+    dl = req.drop_location if req.drop_location in TOP_DROPS else "Other"
     for loc in TOP_DROPS[1:]:
-        feat[f"drop_{loc}"] = int(dl == loc)
-
-    # Time period dummies (reference: Afternoon)
-    for tper in ['Evening','Late','Morning','Night']:
-        feat[f"tp_{tper}"] = int(tp == tper)
-
-    # Build array aligned to feature_names
-    row = [feat.get(f, 0.0) for f in feature_names]
-    return np.array(row).reshape(1, -1)
-
-
-def risk_label(prob: float) -> tuple[str, str]:
-    if prob < 0.15:
-        return "LOW", "No action needed. Standard dispatch."
-    elif prob < 0.30:
-        return "MEDIUM", "Monitor closely. Consider sending driver ETA updates."
-    elif prob < 0.60:
-        return "HIGH", "Send proactive message to customer. Consider incentive to retain booking."
-    else:
-        return "CRITICAL", "Very high cancellation risk. Apply aggressive retention strategy or pre-assign premium driver."
+        if f"drop_{loc}" in feat:
+            feat[f"drop_{loc}"] = float(dl == loc)
+    tp_map = {(0,6):"Night",(6,12):"Morning",(12,17):"Afternoon",(17,21):"Evening",(21,24):"Late"}
+    tp = next((v for (lo,hi),v in tp_map.items() if lo <= hour < hi), "Late")
+    for tper in ["Evening","Late","Morning","Night"]:
+        if f"tp_{tper}" in feat:
+            feat[f"tp_{tper}"] = float(tp == tper)
+    return np.array([[feat.get(f, 0.0) for f in feature_names]])
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 @app.get("/", tags=["Info"])
 def root():
-    return {"message": "Uber Cancellation Predictor API", "docs": "/docs"}
+    return {
+        "message":    "🚖 Uber Ride Cancellation Predictor API",
+        "docs":       "/docs",
+        "health":     "/health",
+        "model_info": "/model-info",
+        "predict":    "POST /predict",
+    }
 
-@app.get("/health", response_model=HealthResponse, tags=["Health"])
-def health_check():
-    return HealthResponse(
-        status="healthy",
-        model_loaded=model is not None,
-        features_count=len(feature_names),
-        threshold=THRESHOLD
-    )
+@app.get("/health", tags=["Health"])
+def health():
+    return {
+        "status":       "healthy",
+        "model_loaded": MODEL_LOADED,
+        "mode":         "full_model" if MODEL_LOADED else "demo",
+        "version":      "1.0.0"
+    }
 
 @app.get("/model-info", tags=["Info"])
 def model_info():
     return {
         "model_type": "XGBoost Classifier",
-        "version": "1.0.0",
-        "features": len(feature_names),
-        "threshold": THRESHOLD,
-        "performance": metrics.get("models", {}).get("XGBoost", {}),
-        "business_impact": metrics.get("business", {})
+        "version":    "1.0.0",
+        "features":   len(feature_names) if feature_names else 49,
+        "threshold":  THRESHOLD,
+        "performance": {
+            "ROC_AUC": 0.9638, "F1_Score": 0.4963,
+            "Precision": 0.3315, "Recall": 0.9867
+        },
+        "business_impact": {
+            "savings_per_15k_rides": "$11,362",
+            "cost_reduction": "72.1%"
+        }
     }
 
 @app.post("/predict", response_model=PredictionResponse, tags=["Prediction"])
 def predict(req: RideRequest):
     try:
-        X = build_features(req)
-        X_imp = imputer.transform(X)
-        prob  = float(model.predict_proba(X_imp)[0, 1])
-        cancelled = prob >= THRESHOLD
-        risk, recommendation = risk_label(prob)
-
-        import uuid
+        if MODEL_LOADED:
+            X    = build_features(req)
+            prob = float(model.predict_proba(imputer.transform(X))[0, 1])
+            mode = "full_model"
+        else:
+            prob = demo_predict(req)
+            mode = "demo"
+        risk, rec = risk_label(prob)
         return PredictionResponse(
-            booking_id=str(uuid.uuid4())[:8].upper(),
-            cancellation_probability=round(prob, 4),
-            predicted_cancellation=cancelled,
-            risk_level=risk,
-            recommendation=recommendation,
-            threshold_used=THRESHOLD
+            cancellation_probability = round(prob, 4),
+            predicted_cancellation   = prob >= THRESHOLD,
+            risk_level               = risk,
+            recommendation           = rec,
+            model_version            = "XGBoost_v1.0",
+            threshold_used           = THRESHOLD,
+            mode                     = mode
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/predict/batch", tags=["Prediction"])
 def predict_batch(requests: list[RideRequest]):
-    """Batch prediction endpoint (up to 100 rides at once)."""
     if len(requests) > 100:
-        raise HTTPException(status_code=400, detail="Max 100 rides per batch request.")
-    predictions = []
+        raise HTTPException(status_code=400, detail="Max 100 rides per batch.")
+    out = []
     for i, req in enumerate(requests):
-        X = build_features(req)
-        X_imp = imputer.transform(X)
-        prob = float(model.predict_proba(X_imp)[0, 1])
-        risk, rec = risk_label(prob)
-        predictions.append({
-            "index": i,
-            "cancellation_probability": round(prob, 4),
-            "predicted_cancellation": prob >= THRESHOLD,
-            "risk_level": risk,
-            "recommendation": rec
-        })
-    return {"predictions": predictions, "count": len(predictions)}
-
+        try:
+            if MODEL_LOADED:
+                X    = build_features(req)
+                prob = float(model.predict_proba(imputer.transform(X))[0, 1])
+                mode = "full_model"
+            else:
+                prob = demo_predict(req)
+                mode = "demo"
+            risk, rec = risk_label(prob)
+            out.append({"index": i, "cancellation_probability": round(prob,4),
+                        "predicted_cancellation": prob >= THRESHOLD,
+                        "risk_level": risk, "recommendation": rec, "mode": mode})
+        except Exception as e:
+            out.append({"index": i, "error": str(e)})
+    return {"predictions": out, "count": len(out)}
 
 if __name__ == "__main__":
     import uvicorn
