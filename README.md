@@ -1,290 +1,237 @@
-\# 🚖 Uber Ride Cancellation Prediction — End-to-End MLOps
+# 🚖 Uber Ride Cancellation Prediction
+### End-to-End MLOps Pipeline · From Raw Data to Deployed API
 
+<p align="center">
+  <a href="https://mybinder.org/v2/gh/harishdeepak-msba/uber-cancellation-mlops/HEAD?filepath=notebooks/Uber_Cancellation_MLOps_Full.ipynb">
+    <img src="https://mybinder.org/badge_logo.svg" alt="Launch Binder" height="28"/>
+  </a>
+  &nbsp;
+  <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white"/>
+  <img src="https://img.shields.io/badge/XGBoost-3.2-FF6600?style=flat-square&logo=xgboost&logoColor=white"/>
+  <img src="https://img.shields.io/badge/FastAPI-0.111-009688?style=flat-square&logo=fastapi&logoColor=white"/>
+  <img src="https://img.shields.io/badge/MLflow-Tracked-0194E2?style=flat-square&logo=mlflow&logoColor=white"/>
+  <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square"/>
+</p>
 
+<p align="center">
+  <i>Predicting ride cancellations before they happen — a full production-grade ML lifecycle<br/>
+  covering feature engineering, experiment tracking, API deployment, and drift monitoring.</i>
+</p>
 
-\[!\[Binder](https://mybinder.org/badge\_logo.svg)](https://mybinder.org/v2/gh/harishdeepak-msba/uber-cancellation-mlops/HEAD?filepath=notebooks/Uber\_Cancellation\_MLOps\_Full.ipynb)
+---
 
-!\[Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)
+## 📌 Table of Contents
+- [Problem Statement](#-problem-statement)
+- [Results](#-results)
+- [Project Dashboard](#️-project-dashboard)
+- [MLOps Lifecycle](#-mlops-lifecycle-covered)
+- [Repository Structure](#-repository-structure)
+- [Quick Start](#-quick-start)
+- [API Usage](#-api-usage)
+- [Tech Stack](#️-tech-stack)
+- [Author](#-author)
 
-!\[XGBoost](https://img.shields.io/badge/XGBoost-3.2-orange)
+---
 
-!\[FastAPI](https://img.shields.io/badge/FastAPI-0.111-green?logo=fastapi)
+## 🎯 Problem Statement
 
-!\[MLflow](https://img.shields.io/badge/MLflow-Tracked-blue)
+Every cancelled Uber ride costs the platform money through **wasted driver dispatch**, **degraded driver satisfaction**, and **customer churn risk**.
 
+This project builds a machine learning model to flag high-risk bookings **before the ride begins** — using only pre-ride metadata with zero data leakage.
 
-
-> Predicting ride cancellations before they happen — a full production ML pipeline
-
-> covering feature engineering, experiment tracking, API deployment, and drift monitoring.
-
-
-
-\---
-
-
-
-\## 🎯 Problem Statement
-
-
-
-Every cancelled Uber ride = lost revenue + wasted driver time + customer churn risk.
-
-This project predicts high-risk bookings \*\*before the ride begins\*\* using only pre-ride metadata.
-
-
-
-\- \*\*Task:\*\* Binary classification
-
-\- \*\*Target:\*\* Customer cancellation (`1` = cancelled, `0` = not)
-
-\- \*\*Dataset:\*\* 150,000 Uber bookings (2024)
-
-\- \*\*Challenge:\*\* Severe class imbalance (\~7% cancellations)
-
-
-
-\---
-
-
-
-\## 📊 Results
-
-
-
-| Model | ROC AUC | F1 Score | Recall |
-
-|---|---|---|---|
-
-| Logistic Regression | 1.000 | 0.998 | 99.7% |
-
-| Random Forest | 1.000 | 0.998 | 99.8% |
-
-| \*\*XGBoost ✅ Best\*\* | \*\*1.000\*\* | \*\*0.999\*\* | \*\*99.9%\*\* |
-
-
-
-\### 💰 Business Impact (per 15,000 rides)
-
-| | Cost |
-
+| | |
 |---|---|
+| **Task** | Binary Classification |
+| **Target** | Did the customer cancel? (`1` = cancelled · `0` = completed) |
+| **Dataset** | 150,000 Uber bookings (2024) |
+| **Challenge** | Severe class imbalance — only ~7% cancellations |
+| **Constraint** | Only features available *before* the ride starts |
 
-| Baseline — no model | $15,750 |
+---
 
-| With model | $30 |
+## 📊 Results
 
-| \*\*Savings\*\* | \*\*$15,720 (99.8% reduction)\*\* |
+### Model Performance (Test Set)
 
+| Model | ROC AUC | F1 Score | Recall (Cancels) | Avg Precision |
+|:---|:---:|:---:|:---:|:---:|
+| Logistic Regression | 1.000 | 0.998 | 99.7% | 1.000 |
+| Random Forest | 1.000 | 0.998 | 99.8% | 1.000 |
+| ⭐ **XGBoost** | **1.000** | **0.999** | **99.9%** | **1.000** |
 
+> Decision threshold set to **0.30** (lower than default 0.5) to maximise recall — we prefer to catch almost all cancellations even at the cost of a few extra false alarms.
 
-\---
+---
 
+### 💰 Business Impact
 
+> Cost assumptions: **$15** per missed cancellation (False Negative) · **$2** per false alarm (False Positive)
 
-\## 🖼️ Project Dashboard
+| Scenario | Cost (per 15,000 rides) |
+|:---|---:|
+| 🔴 Baseline — no model (do nothing) | $15,750 |
+| 🟢 With XGBoost model | $30 |
+| 💰 **Estimated Savings** | **$15,720** |
+| 📉 **Cost Reduction** | **99.8%** |
 
+---
 
+## 🖼️ Project Dashboard
 
-!\[Dashboard](plots/project\_dashboard.png)
+![Dashboard](plots/project_dashboard.png)
 
+---
 
-
-\---
-
-
-
-\## ✅ MLOps Lifecycle Covered
-
-
-
-\- \[x] Problem framing \& exploratory data analysis
-
-\- \[x] Feature engineering — 49 features, strict no-leakage policy
-
-\- \[x] Experiment tracking with \*\*MLflow\*\* (3 models compared)
-
-\- \[x] Business cost analysis — cost of false negatives vs false positives
-
-\- \[x] \*\*FastAPI\*\* REST deployment with single + batch prediction endpoints
-
-\- \[x] \*\*PSI + KS drift detection\*\* with automated retraining triggers
-
-\- \[x] Formal monitoring plan — daily, weekly, monthly cadence
-
-
-
-\---
-
-
-
-\## 📂 Repository Structure
-
-
+## ✅ MLOps Lifecycle Covered
 
 ```
+Raw Data ──► Feature Engineering ──► MLflow Tracking ──► Model Training
+    └──► Business Metrics ──► FastAPI Deployment ──► Drift Monitoring
+```
 
+- [x] **Problem framing** & exploratory data analysis (EDA)
+- [x] **Feature engineering** — 49 features, strict no-leakage policy
+- [x] **Experiment tracking** with MLflow — 3 models compared with full reproducibility
+- [x] **Business metric evaluation** — dollar cost of false negatives vs false positives
+- [x] **FastAPI REST deployment** — single + batch prediction endpoints with Swagger UI
+- [x] **Drift detection** — PSI + KS test with automated retraining triggers
+- [x] **Formal monitoring plan** — daily, weekly, and monthly cadence
+
+---
+
+## 📂 Repository Structure
+
+```
 uber-cancellation-mlops/
-
-├── notebooks/
-
-│   └── Uber\_Cancellation\_MLOps\_Full.ipynb
-
-├── api/
-
-│   └── fastapi\_app.py
-
-├── monitoring/
-
-│   └── monitoring.py
-
-├── plots/
-
-│   └── project\_dashboard.png
-
-├── binder/
-
-│   └── environment.yml
-
-├── model\_metrics.json
-
-├── requirements.txt
-
+│
+├── 📓 notebooks/
+│   └── Uber_Cancellation_MLOps_Full.ipynb   ← Full end-to-end notebook (37 cells)
+│
+├── 🌐 api/
+│   └── fastapi_app.py                        ← REST API with /predict & /predict/batch
+│
+├── 📡 monitoring/
+│   └── monitoring.py                         ← PSI + KS drift detection framework
+│
+├── 🖼️ plots/
+│   └── project_dashboard.png                 ← All key visualisations in one view
+│
+├── ⚙️ binder/
+│   └── environment.yml                       ← Binder environment config
+│
+├── model_metrics.json                        ← Evaluation metrics (all 3 models)
+├── requirements.txt                          ← Python dependencies
+├── LICENSE
 └── README.md
-
 ```
 
+---
 
+## 🚀 Quick Start
 
-\---
-
-
-
-\## 🚀 Quick Start
-
-
-
+### 1. Clone & Install
 ```bash
-
-git clone https://github.com/harishdeepak-msba/uber-cancellation-mlops
-
+git clone https://github.com/harishdeepak-msba/uber-cancellation-mlops.git
 cd uber-cancellation-mlops
-
 pip install -r requirements.txt
-
-jupyter notebook notebooks/Uber\_Cancellation\_MLOps\_Full.ipynb
-
 ```
 
-
-
-Start the API:
-
+### 2. Run the Notebook
 ```bash
-
-uvicorn api.fastapi\_app:app --port 8000
-
-\# Open http://localhost:8000/docs
-
+jupyter notebook notebooks/Uber_Cancellation_MLOps_Full.ipynb
 ```
+> Or click the **Launch Binder** badge at the top — runs in your browser, no setup needed.
 
-
-
-\---
-
-
-
-\## 📡 Sample API Call
-
-
-
+### 3. Start the API
 ```bash
+uvicorn api.fastapi_app:app --host 0.0.0.0 --port 8000
+```
+Then open **http://localhost:8000/docs** for the interactive Swagger UI.
 
-curl -X POST http://localhost:8000/predict \\
+---
 
-&#x20; -H "Content-Type: application/json" \\
+## 📡 API Usage
 
-&#x20; -d '{
-
-&#x20;   "booking\_time": "2024-06-15 08:30:00",
-
-&#x20;   "vehicle\_type": "Go Mini",
-
-&#x20;   "pickup\_location": "Saket",
-
-&#x20;   "drop\_location": "Barakhamba Road",
-
-&#x20;   "avg\_vtat": 7.5,
-
-&#x20;   "avg\_ctat": 4.2,
-
-&#x20;   "payment\_method": "UPI",
-
-&#x20;   "customer\_total\_bookings": 8,
-
-&#x20;   "customer\_cancel\_history": 2
-
-&#x20; }'
-
+### Single Prediction
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "booking_time": "2024-06-15 08:30:00",
+    "vehicle_type": "Go Mini",
+    "pickup_location": "Saket",
+    "drop_location": "Barakhamba Road",
+    "avg_vtat": 7.5,
+    "avg_ctat": 4.2,
+    "payment_method": "UPI",
+    "customer_total_bookings": 8,
+    "customer_cancel_history": 2
+  }'
 ```
 
-
-
-\*\*Response:\*\*
-
+**Response:**
 ```json
-
 {
-
-&#x20; "cancellation\_probability": 0.062,
-
-&#x20; "predicted\_cancellation": false,
-
-&#x20; "risk\_level": "LOW",
-
-&#x20; "recommendation": "No action needed. Standard dispatch.",
-
-&#x20; "model\_version": "XGBoost\_v1.0"
-
+  "cancellation_probability": 0.062,
+  "predicted_cancellation": false,
+  "risk_level": "LOW",
+  "recommendation": "No action needed. Standard dispatch.",
+  "model_version": "XGBoost_v1.0",
+  "threshold_used": 0.3
 }
-
 ```
 
+### Available Endpoints
 
+| Method | Endpoint | Description |
+|:---:|:---|:---|
+| `GET` | `/health` | Liveness check |
+| `GET` | `/model-info` | Model version + performance metrics |
+| `POST` | `/predict` | Single ride cancellation prediction |
+| `POST` | `/predict/batch` | Batch predictions (up to 100 rides) |
+| `GET` | `/docs` | Interactive Swagger UI |
 
-\---
+---
 
-
-
-\## 🛠️ Tech Stack
-
-
+## 🛠️ Tech Stack
 
 | Category | Tools |
+|:---|:---|
+| **Modelling** | XGBoost · scikit-learn · SHAP |
+| **Experiment Tracking** | MLflow |
+| **API Serving** | FastAPI · Uvicorn · Pydantic |
+| **Monitoring** | Custom PSI + KS drift detection |
+| **Visualisation** | Matplotlib · Seaborn |
+| **Reproducibility** | Binder · requirements.txt |
 
-|---|---|
+---
 
-| Modeling | XGBoost, scikit-learn, SHAP |
+## 🔍 Key Technical Decisions
 
-| Experiment Tracking | MLflow |
+| Decision | Rationale |
+|:---|:---|
+| Threshold = 0.30 (not 0.50) | Prioritise recall — missing a cancellation costs $15, false alarm costs $2 |
+| `scale_pos_weight = 13.29` | Handles 13:1 class imbalance in XGBoost |
+| Median imputation | Safe for tree models; preserves feature distributions |
+| PSI + KS dual monitoring | PSI catches gradual drift; KS catches sudden distribution shifts |
+| No Booking Value / Ride Distance | These are only available post-ride — strict leakage prevention |
 
-| API Serving | FastAPI, Uvicorn, Pydantic |
+---
 
-| Monitoring | Custom PSI + KS drift detection |
+## 👤 Author
 
-| Visualization | Matplotlib, Seaborn |
+<table>
+  <tr>
+    <td align="center">
+      <b>Harish Deepak</b><br/>
+      MSBA · University of Arizona<br/>
+      <a href="https://github.com/harishdeepak-msba">🐙 GitHub</a>
+    </td>
+  </tr>
+</table>
 
+---
 
-
-\---
-
-
-
-\## 👤 Author
-
-
-
-\*\*Harish Deepak\*\* — MSBA, University of Arizona  
-
-\[GitHub Profile](https://github.com/harishdeepak-msba)
-
+<p align="center">
+  <i>If you found this project useful, please consider giving it a ⭐</i>
+</p>
