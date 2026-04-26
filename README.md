@@ -6,10 +6,11 @@
     <img src="https://mybinder.org/badge_logo.svg" alt="Launch Binder" height="28"/>
   </a>
   &nbsp;
-  <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white"/>
   <img src="https://img.shields.io/badge/XGBoost-3.2-FF6600?style=flat-square&logoColor=white"/>
   <img src="https://img.shields.io/badge/FastAPI-0.111-009688?style=flat-square&logo=fastapi&logoColor=white"/>
   <img src="https://img.shields.io/badge/MLflow-Tracked-0194E2?style=flat-square&logo=mlflow&logoColor=white"/>
+  <img src="https://img.shields.io/badge/API-Live%20on%20Render-46E3B7?style=flat-square&logo=render&logoColor=white"/>
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square"/>
 </p>
 
@@ -28,6 +29,7 @@
 - [MLOps Lifecycle](#-mlops-lifecycle-covered)
 - [Repository Structure](#-repository-structure)
 - [Quick Start](#-quick-start)
+- [Live API](#-live-api--deployed-on-render)
 - [API Usage](#-api-usage)
 - [Tech Stack](#️-tech-stack)
 - [Author](#-author)
@@ -62,7 +64,7 @@ This project builds a machine learning model to flag high-risk bookings **before
 | Random Forest | 0.950 | 0.396 | 0.247 | 99.8% | 0.142 |
 | ⭐ **XGBoost** | **0.964** | **0.496** | **0.332** | **98.7%** | 0.0001 |
 
-> **Why these F1 scores?** Class imbalance (7% positives) makes F1 harder to maximise. The models achieve strong AUC (discrimination ability) and very high recall — catching nearly all cancellations — at the cost of some false alarms. This is the correct trade-off: missing a cancellation costs $15; a false alarm costs only $2.
+> **Why these F1 scores?** Class imbalance (7% positives) makes F1 harder to maximise. The models achieve strong AUC and very high recall — catching nearly all cancellations — at the cost of some false alarms. This is the correct trade-off: missing a cancellation costs $15; a false alarm costs only $2.
 
 ---
 
@@ -134,7 +136,7 @@ Raw Data ──► Feature Engineering ──► MLflow Tracking ──► Model
 - [x] **Leakage detection & correction** — identified and fixed customer history leakage
 - [x] **Experiment tracking** with MLflow — 3 models with full reproducibility
 - [x] **Business cost analysis** — dollar value of false negatives vs false positives
-- [x] **FastAPI REST deployment** — single + batch endpoints with Swagger UI
+- [x] **FastAPI REST deployment** — live public API on Render
 - [x] **Drift detection** — PSI + KS test with automated retraining triggers
 - [x] **Formal monitoring plan** — daily, weekly, monthly cadence
 
@@ -161,6 +163,7 @@ uber-cancellation-mlops/
 │   └── environment.yml                       ← Binder environment config
 │
 ├── model_metrics.json                        ← Corrected evaluation metrics
+├── render.yaml                               ← Render deployment config
 ├── requirements.txt
 ├── LICENSE
 └── README.md
@@ -181,13 +184,29 @@ pip install -r requirements.txt
 ```bash
 jupyter notebook notebooks/Uber_Cancellation_MLOps_Full.ipynb
 ```
-> Or click the **Launch Binder** badge at the top — runs in your browser, zero setup.
+> Or click the **Launch Binder** badge at the top — runs in your browser, zero setup needed.
 
-### 3. Start the API locally
+### 3. Run the API Locally
 ```bash
 uvicorn api.fastapi_app:app --host 0.0.0.0 --port 8000
 ```
-Then open 'http://localhost:8000/docs' in your browser for the interactive Swagger UI.
+Then open `http://localhost:8000/docs` in your browser.
+
+---
+
+## 🌐 Live API — Deployed on Render
+
+The API is publicly deployed and accessible to anyone — no setup required.
+
+| | URL |
+|---|---|
+| 📖 **Swagger UI** | https://uber-cancellation-api.onrender.com/docs |
+| ❤️ **Health Check** | https://uber-cancellation-api.onrender.com/health |
+| ℹ️ **Model Info** | https://uber-cancellation-api.onrender.com/model-info |
+| 🔮 **Predict** | `POST` https://uber-cancellation-api.onrender.com/predict |
+| 📦 **Batch Predict** | `POST` https://uber-cancellation-api.onrender.com/predict/batch |
+
+> ⚠️ **Free tier note:** The server sleeps after 15 minutes of inactivity. The first request after sleep takes ~30 seconds to wake up — subsequent requests are instant.
 
 ---
 
@@ -195,7 +214,7 @@ Then open 'http://localhost:8000/docs' in your browser for the interactive Swagg
 
 ### Single Prediction
 ```bash
-curl -X POST http://localhost:8000/predict \
+curl -X POST https://uber-cancellation-api.onrender.com/predict \
   -H "Content-Type: application/json" \
   -d '{
     "booking_time": "2024-06-15 08:30:00",
@@ -213,23 +232,35 @@ curl -X POST http://localhost:8000/predict \
 **Response:**
 ```json
 {
-  "cancellation_probability": 0.062,
-  "predicted_cancellation": false,
+  "cancellation_probability": 0.11,
+  "predicted_cancellation": true,
   "risk_level": "LOW",
   "recommendation": "No action needed. Standard dispatch.",
-  "model_version": "XGBoost_v1.0"
+  "model_version": "XGBoost_v1.0",
+  "threshold_used": 0.0001,
+  "mode": "demo"
 }
 ```
+
+### Risk Levels Explained
+
+| Risk Level | Probability | Recommended Action |
+|:---|:---:|:---|
+| 🟢 **LOW** | < 15% | No action — standard dispatch |
+| 🟡 **MEDIUM** | 15–35% | Send driver ETA updates to customer |
+| 🟠 **HIGH** | 35–65% | Send proactive message + retention incentive |
+| 🔴 **CRITICAL** | > 65% | Aggressive retention — assign premium driver |
 
 ### Available Endpoints
 
 | Method | Endpoint | Description |
 |:---:|:---|:---|
+| `GET` | `/` | API info |
 | `GET` | `/health` | Liveness check |
 | `GET` | `/model-info` | Model version + performance metrics |
 | `POST` | `/predict` | Single ride cancellation prediction |
 | `POST` | `/predict/batch` | Batch predictions (up to 100 rides) |
-| `GET` | `/docs` | Interactive Swagger UI (run locally) |
+| `GET` | `/docs` | Interactive Swagger UI |
 
 ---
 
@@ -240,6 +271,7 @@ curl -X POST http://localhost:8000/predict \
 | **Modelling** | XGBoost · scikit-learn · SHAP |
 | **Experiment Tracking** | MLflow |
 | **API Serving** | FastAPI · Uvicorn · Pydantic |
+| **Deployment** | Render (live public API) |
 | **Monitoring** | Custom PSI + KS drift detection |
 | **Visualisation** | Matplotlib · Seaborn |
 | **Reproducibility** | Binder · requirements.txt |
