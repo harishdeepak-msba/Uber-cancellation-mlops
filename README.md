@@ -2,7 +2,7 @@
 ### End-to-End MLOps Pipeline · From Raw Data to Deployed API
 
 <p align="center">
-  <a href="https://mybinder.org/v2/gh/harishdeepak-msba/uber-cancellation-mlops/HEAD?filepath=notebooks/Uber_Cancellation_MLOps_Full.ipynb">
+  <a href="https://mybinder.org/v2/gh/harishdeepak-msba/Uber-cancellation-mlops/HEAD?urlpath=%2Fdoc%2Ftree%2Fnotebooks%2FUber_Cancellation_MLOps_Full.ipynb">
     <img src="https://mybinder.org/badge_logo.svg" alt="Launch Binder" height="28"/>
   </a>
   &nbsp;
