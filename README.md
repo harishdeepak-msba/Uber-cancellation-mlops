@@ -112,7 +112,7 @@ X_test['customer_cancel_history']  = c_test.map(cust_cancel_history).fillna(0)
 
 After fixing: **AUC dropped from 1.00 → 0.964** — realistic and deployable.
 
-> 💡 *Interview answer: "I noticed suspiciously perfect AUC = 1.00 across all three models. I traced it to customer-level aggregation features computed on the full dataset before splitting — a classic form of target leakage. After enforcing split-first ordering, AUC settled at a realistic 0.964 for XGBoost."*
+> 💡 * When traced to customer-level aggregation features computed on the full dataset before splitting, shows a classic form of target leakage. After enforcing split-first ordering, AUC settled at a realistic 0.964 for XGBoost."*
 
 ---
 
