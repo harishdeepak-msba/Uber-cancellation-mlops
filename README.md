@@ -187,7 +187,7 @@ jupyter notebook notebooks/Uber_Cancellation_MLOps_Full.ipynb
 ```bash
 uvicorn api.fastapi_app:app --host 0.0.0.0 --port 8000
 ```
-Then open **http://localhost:8000/docs** in your browser for the interactive Swagger UI.
+Then open 'http://localhost:8000/docs' in your browser for the interactive Swagger UI.
 
 ---
 
