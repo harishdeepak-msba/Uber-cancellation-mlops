@@ -112,13 +112,13 @@ X_test['customer_cancel_history']  = c_test.map(cust_cancel_history).fillna(0)
 
 After fixing: **AUC dropped from 1.00 → 0.964** — realistic and deployable.
 
-> 💡 * When traced to customer-level aggregation features computed on the full dataset before splitting, shows a classic form of target leakage. After enforcing split-first ordering, AUC settled at a realistic 0.964 for XGBoost."*
+> 💡 *During evaluation, suspiciously perfect AUC = 1.00 was traced to customer-level aggregation features computed on the full dataset before splitting — a classic form of target leakage. After enforcing split-first ordering, AUC settled at a realistic 0.964 for XGBoost.*
 
 ---
 
 ## 🖼️ Project Dashboard
 
-![Dashboard](plots/corrected_results_dashboard.png)
+![Dashboard](https://raw.githubusercontent.com/harishdeepak-msba/Uber-cancellation-mlops/main/plots/project_dashboard.png)
 
 ---
 
@@ -155,7 +155,7 @@ uber-cancellation-mlops/
 │   └── monitoring.py                         ← PSI + KS drift detection framework
 │
 ├── 🖼️ plots/
-│   └── corrected_results_dashboard.png       ← All visualisations in one view
+│   └── project_dashboard.png                 ← All visualisations in one view
 │
 ├── ⚙️ binder/
 │   └── environment.yml                       ← Binder environment config
@@ -183,11 +183,11 @@ jupyter notebook notebooks/Uber_Cancellation_MLOps_Full.ipynb
 ```
 > Or click the **Launch Binder** badge at the top — runs in your browser, zero setup.
 
-### 3. Start the API
+### 3. Start the API locally
 ```bash
 uvicorn api.fastapi_app:app --host 0.0.0.0 --port 8000
 ```
-Open **http://localhost:8000/docs** for the interactive Swagger UI.
+Then open **http://localhost:8000/docs** in your browser for the interactive Swagger UI.
 
 ---
 
@@ -229,7 +229,7 @@ curl -X POST http://localhost:8000/predict \
 | `GET` | `/model-info` | Model version + performance metrics |
 | `POST` | `/predict` | Single ride cancellation prediction |
 | `POST` | `/predict/batch` | Batch predictions (up to 100 rides) |
-| `GET` | `/docs` | Interactive Swagger UI |
+| `GET` | `/docs` | Interactive Swagger UI (run locally) |
 
 ---
 
