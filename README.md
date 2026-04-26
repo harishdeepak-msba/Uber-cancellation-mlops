@@ -75,10 +75,10 @@ This project builds a machine learning model to flag high-risk bookings **before
 | Cancellations caught (True Positives) | 1,036 |
 | Missed cancellations (False Negatives) | 14 |
 | False alarms (False Positives) | 2,089 |
-| 🔴 Baseline cost — no model | $15,750 |
-| 🟢 Model cost (FN + FP combined) | $4,388 |
-| 💰 **Estimated Savings** | **$11,362** |
-| 📉 **Cost Reduction** | **72.1%** |
+| Baseline cost — no model | $15,750 |
+| Model cost (FN + FP combined) | $4,388 |
+| **Estimated Savings** | **$11,362** |
+| **Cost Reduction** | **72.1%** |
 
 ---
 
@@ -90,7 +90,7 @@ This project builds a machine learning model to flag high-risk bookings **before
 The original pipeline computed customer history features **on the full dataset before the train/test split**:
 
 ```python
-# ❌ WRONG — leakage! Test rows contaminate their own features
+# WRONG — leakage! Test rows contaminate their own features
 df['customer_cancel_history'] = df['Customer ID'].map(
     df[df['target_customer_cancelled'] == 1]['Customer ID'].value_counts()
 )
@@ -101,20 +101,20 @@ This means the model saw how many times a customer cancelled — **including the
 ### The Fix — Split First, Aggregate Second
 
 ```python
-# ✅ CORRECT — split the data first
+# CORRECT — split the data first
 X_train, X_test, y_train, y_test = train_test_split(X, y, stratify=y, random_state=42)
 
 # Compute history ONLY from training rows
 cust_cancel_history = c_train[y_train == 1].value_counts().to_dict()
 
-# Apply learned mapping to all splits (unseen test customers → 0)
+# Apply learned mapping to all splits (unseen test customers get 0)
 X_train['customer_cancel_history'] = c_train.map(cust_cancel_history).fillna(0)
 X_test['customer_cancel_history']  = c_test.map(cust_cancel_history).fillna(0)
 ```
 
-After fixing: **AUC dropped from 1.00 → 0.964** — realistic and deployable.
+After fixing: **AUC dropped from 1.00 to 0.964** — realistic and deployable.
 
-> 💡 *During evaluation, suspiciously perfect AUC = 1.00 was traced to customer-level aggregation features computed on the full dataset before splitting — a classic form of target leakage. After enforcing split-first ordering, AUC settled at a realistic 0.964 for XGBoost.*
+> During evaluation, suspiciously perfect AUC = 1.00 was traced to customer-level aggregation features computed on the full dataset before splitting — a classic form of target leakage. After enforcing split-first ordering, AUC settled at a realistic 0.964 for XGBoost.
 
 ---
 
@@ -127,18 +127,18 @@ After fixing: **AUC dropped from 1.00 → 0.964** — realistic and deployable.
 ## ✅ MLOps Lifecycle Covered
 
 ```
-Raw Data ──► Feature Engineering ──► MLflow Tracking ──► Model Training
-    └──► Business Metrics ──► FastAPI Deployment ──► Drift Monitoring
+Raw Data --> Feature Engineering --> MLflow Tracking --> Model Training
+    └--> Business Metrics --> FastAPI Deployment --> Drift Monitoring
 ```
 
-- [x] **Problem framing** & exploratory data analysis (EDA)
-- [x] **Feature engineering** — 49 features, strict no-leakage policy
-- [x] **Leakage detection & correction** — identified and fixed customer history leakage
-- [x] **Experiment tracking** with MLflow — 3 models with full reproducibility
-- [x] **Business cost analysis** — dollar value of false negatives vs false positives
-- [x] **FastAPI REST deployment** — live public API on Render
-- [x] **Drift detection** — PSI + KS test with automated retraining triggers
-- [x] **Formal monitoring plan** — daily, weekly, monthly cadence
+- [x] Problem framing and exploratory data analysis
+- [x] Feature engineering — 49 features, strict no-leakage policy
+- [x] Leakage detection and correction — identified and fixed customer history leakage
+- [x] Experiment tracking with MLflow — 3 models with full reproducibility
+- [x] Business cost analysis — dollar value of false negatives vs false positives
+- [x] FastAPI REST deployment — live public API on Render
+- [x] Drift detection — PSI and KS test with automated retraining triggers
+- [x] Formal monitoring plan — daily, weekly, monthly cadence
 
 ---
 
@@ -146,24 +146,18 @@ Raw Data ──► Feature Engineering ──► MLflow Tracking ──► Model
 
 ```
 uber-cancellation-mlops/
-│
-├── 📓 notebooks/
-│   └── Uber_Cancellation_MLOps_Full.ipynb   ← Full end-to-end notebook
-│
-├── 🌐 api/
-│   └── fastapi_app.py                        ← REST API (/predict, /predict/batch)
-│
-├── 📡 monitoring/
-│   └── monitoring.py                         ← PSI + KS drift detection framework
-│
-├── 🖼️ plots/
-│   └── project_dashboard.png                 ← All visualisations in one view
-│
-├── ⚙️ binder/
-│   └── environment.yml                       ← Binder environment config
-│
-├── model_metrics.json                        ← Corrected evaluation metrics
-├── render.yaml                               ← Render deployment config
+├── notebooks/
+│   └── Uber_Cancellation_MLOps_Full.ipynb
+├── api/
+│   └── fastapi_app.py
+├── monitoring/
+│   └── monitoring.py
+├── plots/
+│   └── project_dashboard.png
+├── binder/
+│   └── environment.yml
+├── model_metrics.json
+├── render.yaml
 ├── requirements.txt
 ├── LICENSE
 └── README.md
@@ -173,7 +167,7 @@ uber-cancellation-mlops/
 
 ## 🚀 Quick Start
 
-### 1. Clone & Install
+### 1. Clone and Install
 ```bash
 git clone https://github.com/harishdeepak-msba/uber-cancellation-mlops.git
 cd uber-cancellation-mlops
@@ -184,7 +178,7 @@ pip install -r requirements.txt
 ```bash
 jupyter notebook notebooks/Uber_Cancellation_MLOps_Full.ipynb
 ```
-> Or click the **Launch Binder** badge at the top — runs in your browser, zero setup needed.
+Or click the **Launch Binder** badge at the top to run in your browser with zero setup.
 
 ### 3. Run the API Locally
 ```bash
@@ -196,17 +190,24 @@ Then open `http://localhost:8000/docs` in your browser.
 
 ## 🌐 Live API — Deployed on Render
 
-The API is publicly deployed and accessible to anyone — no setup required.
+The API is publicly deployed and accessible to anyone with no setup required.
 
-| | URL |
-|---|---|
-| 📖 **Swagger UI** | https://uber-cancellation-api.onrender.com/docs |
-| ❤️ **Health Check** | https://uber-cancellation-api.onrender.com/health |
-| ℹ️ **Model Info** | https://uber-cancellation-api.onrender.com/model-info |
-| 🔮 **Predict** | `POST` https://uber-cancellation-api.onrender.com/predict |
-| 📦 **Batch Predict** | `POST` https://uber-cancellation-api.onrender.com/predict/batch |
+> **Note:** Free tier server sleeps after 15 minutes of inactivity. First request after sleep takes about 30 seconds to wake up — all subsequent requests are instant.
 
-> ⚠️ **Free tier note:** The server sleeps after 15 minutes of inactivity. The first request after sleep takes ~30 seconds to wake up — subsequent requests are instant.
+**Swagger UI (Try it live):**
+[https://uber-cancellation-api.onrender.com/docs](https://uber-cancellation-api.onrender.com/docs)
+
+**Health Check:**
+[https://uber-cancellation-api.onrender.com/health](https://uber-cancellation-api.onrender.com/health)
+
+**Model Info:**
+[https://uber-cancellation-api.onrender.com/model-info](https://uber-cancellation-api.onrender.com/model-info)
+
+**Predict (POST):**
+`https://uber-cancellation-api.onrender.com/predict`
+
+**Batch Predict (POST):**
+`https://uber-cancellation-api.onrender.com/predict/batch`
 
 ---
 
@@ -244,23 +245,23 @@ curl -X POST https://uber-cancellation-api.onrender.com/predict \
 
 ### Risk Levels Explained
 
-| Risk Level | Probability | Recommended Action |
+| Risk Level | Probability | Action |
 |:---|:---:|:---|
-| 🟢 **LOW** | < 15% | No action — standard dispatch |
-| 🟡 **MEDIUM** | 15–35% | Send driver ETA updates to customer |
-| 🟠 **HIGH** | 35–65% | Send proactive message + retention incentive |
-| 🔴 **CRITICAL** | > 65% | Aggressive retention — assign premium driver |
+| LOW | Less than 15% | No action — standard dispatch |
+| MEDIUM | 15 to 35% | Send driver ETA updates to customer |
+| HIGH | 35 to 65% | Send proactive message and retention incentive |
+| CRITICAL | Above 65% | Aggressive retention — assign premium driver |
 
-### Available Endpoints
+### All Endpoints
 
 | Method | Endpoint | Description |
 |:---:|:---|:---|
-| `GET` | `/` | API info |
-| `GET` | `/health` | Liveness check |
-| `GET` | `/model-info` | Model version + performance metrics |
-| `POST` | `/predict` | Single ride cancellation prediction |
-| `POST` | `/predict/batch` | Batch predictions (up to 100 rides) |
-| `GET` | `/docs` | Interactive Swagger UI |
+| GET | `/` | API info |
+| GET | `/health` | Liveness check |
+| GET | `/model-info` | Model version and performance metrics |
+| POST | `/predict` | Single ride cancellation prediction |
+| POST | `/predict/batch` | Batch predictions up to 100 rides |
+| GET | `/docs` | Interactive Swagger UI |
 
 ---
 
@@ -268,13 +269,13 @@ curl -X POST https://uber-cancellation-api.onrender.com/predict \
 
 | Category | Tools |
 |:---|:---|
-| **Modelling** | XGBoost · scikit-learn · SHAP |
+| **Modelling** | XGBoost, scikit-learn, SHAP |
 | **Experiment Tracking** | MLflow |
-| **API Serving** | FastAPI · Uvicorn · Pydantic |
+| **API Serving** | FastAPI, Uvicorn, Pydantic |
 | **Deployment** | Render (live public API) |
-| **Monitoring** | Custom PSI + KS drift detection |
-| **Visualisation** | Matplotlib · Seaborn |
-| **Reproducibility** | Binder · requirements.txt |
+| **Monitoring** | Custom PSI and KS drift detection |
+| **Visualisation** | Matplotlib, Seaborn |
+| **Reproducibility** | Binder, requirements.txt |
 
 ---
 
@@ -282,29 +283,22 @@ curl -X POST https://uber-cancellation-api.onrender.com/predict \
 
 | Decision | Rationale |
 |:---|:---|
-| **Split before aggregation** | Prevents customer history leakage — root cause of AUC = 1.00 |
-| **Youden's J threshold** | Maximises TPR − FPR on val set; more robust than F1 grid search |
-| `scale_pos_weight = 13.29` | Handles 13 : 1 class imbalance in XGBoost natively |
-| **Median imputation** | Fit on train only; applied to val/test separately |
-| **PSI + KS monitoring** | PSI catches gradual drift; KS catches sudden distribution shifts |
-| **Post-ride features excluded** | Booking Value, Ride Distance, Ratings only available after the ride |
+| Split before aggregation | Prevents customer history leakage — root cause of AUC = 1.00 |
+| Youden's J threshold | Maximises TPR minus FPR on val set; more robust than F1 grid search |
+| scale_pos_weight = 13.29 | Handles 13 to 1 class imbalance in XGBoost natively |
+| Median imputation | Fit on train only; applied to val and test separately |
+| PSI and KS monitoring | PSI catches gradual drift; KS catches sudden distribution shifts |
+| Post-ride features excluded | Booking Value, Ride Distance, Ratings only available after the ride |
 
 ---
 
 ## 👤 Author
 
-<table>
-  <tr>
-    <td align="center">
-      <b>Harish Deepak</b><br/>
-      MSBA · University of Arizona<br/>
-      <a href="https://github.com/harishdeepak-msba">🐙 GitHub</a>
-    </td>
-  </tr>
-</table>
+**Harish Deepak**
+MSBA · University of Arizona
+
+[GitHub Profile](https://github.com/harishdeepak-msba)
 
 ---
 
-<p align="center">
-  <i>If you found this project useful, please consider giving it a ⭐</i>
-</p>
+<p align="center">If you found this project useful, please consider giving it a star</p>
