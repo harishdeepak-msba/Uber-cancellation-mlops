@@ -60,11 +60,11 @@ This project builds a machine learning model to flag high-risk bookings **before
 
 | Model | ROC AUC | F1 Score | Precision | Recall | Threshold |
 |:---|:---:|:---:|:---:|:---:|:---:|
-| ⭐ **XGBoost** | **0.767** | **0.253** | **0.162** | **57.2%** | 0.489 |
+| ⭐ **XGBoost (tuned)** | **0.779** | **0.498** | **0.934** | **33.9%** | 0.105 |
 
 > Logistic Regression and Random Forest were not rerun after the second leakage audit below. Their earlier numbers are removed because they used the same leaky inputs.
 
-> **Reading these numbers:** Class imbalance (7% positives) keeps precision low. The model catches 57% of cancellations at a cost of 3,108 false alarms on 15,000 rides. Missing a cancellation costs $15 in this analysis. A false alarm costs $2. These costs are assumptions, not measured values.
+> **Reading these numbers:** The threshold (0.105) was chosen on the validation set to minimize cost. It flags only high-risk rides, mostly those with long driver wait times (`Avg VTAT`, 85% of model importance). The model catches 34% of cancellations and 93% of its flags are correct. Missing a cancellation costs $15 in this analysis. A false alarm costs $2. These costs are assumptions, not measured values.
 
 ---
 
@@ -72,17 +72,17 @@ This project builds a machine learning model to flag high-risk bookings **before
 
 | Metric | Value |
 |:---|---:|
-| Cancellations caught (True Positives) | 601 |
-| Missed cancellations (False Negatives) | 449 |
-| False alarms (False Positives) | 3,108 |
+| Cancellations caught (True Positives) | 356 |
+| Missed cancellations (False Negatives) | 694 |
+| False alarms (False Positives) | 25 |
 | Baseline cost — no model | $15,750 |
-| Model cost (FN + FP combined) | $12,951 |
-| **Estimated Savings** | **$2,799** |
-| **Cost Reduction** | **17.8%** |
+| Model cost (FN + FP combined) | $10,460 |
+| **Estimated Savings** | **$5,290** |
+| **Cost Reduction** | **33.6%** |
 
 ---
 
-## 🔍 Leakage Fixes — Why AUC Fell From 1.00 to 0.767
+## 🔍 Leakage Fixes — Why AUC Fell From 1.00 to 0.779
 
 > **This section demonstrates a real-world debugging skill — catching and correcting data leakage.**
 
@@ -122,7 +122,7 @@ A later audit found more leakage:
 - `Avg CTAT` is missing for 100% of cancellations. It records time after pickup.
 - Training rows counted their own cancellation in `customer_cancel_history`. Training now excludes the row's own label.
 
-After removing these inputs, test AUC is **0.767** on 15,000 held-out rides. Treat 0.767 as the honest estimate. The deployed API now matches the training pipeline on 400 test rows.
+After removing these inputs and tuning the model, test AUC is **0.779** on 15,000 held-out rides. Treat 0.779 as the honest estimate. `Avg VTAT` alone scores 0.769, so the other features add little. The deployed API matches the training pipeline on 400 test rows.
 
 ---
 
@@ -246,7 +246,7 @@ curl -X POST https://uber-cancellation-api.onrender.com/predict \
   "risk_level": "LOW",
   "recommendation": "No action needed. Standard dispatch.",
   "model_version": "XGBoost_v1.0",
-  "threshold_used": 0.4891,
+  "threshold_used": 0.105,
   "mode": "demo"
 }
 ```

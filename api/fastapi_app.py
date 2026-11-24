@@ -19,13 +19,13 @@ app = FastAPI(
     description="""
 Predicts the probability of a customer cancelling their Uber ride before it begins.
 
-**Model:** XGBoost, test AUC = 0.767, trained on 150,000 bookings
+**Model:** XGBoost, test AUC = 0.779, trained on 150,000 bookings
 
 **Key facts:**
 - Uses only features known at booking time (post-ride fields removed after a leakage audit)
 - Customer history computed from training set only, own label excluded
-- Threshold via Youden's J statistic on validation set
-- Business impact: $2,799 savings per 15K rides (17.8% cost reduction), assuming $15 per missed cancellation and $2 per false alarm
+- Threshold picked on the validation set to minimize cost ($15 per miss, $2 per false alarm)
+- Business impact: $5,290 savings per 15K rides (33.6% cost reduction), assuming $15 per missed cancellation and $2 per false alarm
 
 ![Project dashboard](/dashboard)
     """,
@@ -85,7 +85,7 @@ class PredictionResponse(BaseModel):
     mode:                     str
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-THRESHOLD   = 0.4891
+THRESHOLD   = 0.105
 TOP_PICKUPS = ['Khandsa','Barakhamba Road','Saket','Badarpur','Pragati Maidan',
                'Madipur','AIIMS','Mehrauli','Dwarka Sector 21','Pataudi Chowk']
 TOP_DROPS   = ['Ashram','Basai Dhankot','Lok Kalyan Marg','Narsinghpur','Cyber Hub',
@@ -93,9 +93,9 @@ TOP_DROPS   = ['Ashram','Basai Dhankot','Lok Kalyan Marg','Narsinghpur','Cyber H
 VEHICLE_TYPES = ['Auto','Go Mini','Go Sedan','Bike','Premier Sedan','eBike','Uber XL']
 
 def risk_label(prob: float):
-    if prob < 0.25:   return "LOW",      "No action needed. Standard dispatch."
+    if prob < THRESHOLD / 2: return "LOW",      "No action needed. Standard dispatch."
     elif prob < THRESHOLD: return "MEDIUM", "Monitor closely. Send driver ETA updates."
-    elif prob < 0.75: return "HIGH",     "Send proactive message. Consider retention incentive."
+    elif prob < 0.5:  return "HIGH",     "Send proactive message. Consider retention incentive."
     else:             return "CRITICAL", "Very high cancellation risk. Apply aggressive retention strategy."
 
 def demo_predict(req: RideRequest) -> float:
@@ -169,12 +169,12 @@ def model_info():
         "features":   len(feature_names) if feature_names else 39,
         "threshold":  THRESHOLD,
         "performance": {
-            "ROC_AUC": 0.7671, "F1_Score": 0.2526,
-            "Precision": 0.162, "Recall": 0.5724
+            "ROC_AUC": 0.7787, "F1_Score": 0.4976,
+            "Precision": 0.9344, "Recall": 0.339
         },
         "business_impact": {
-            "savings_per_15k_rides": "$2,799",
-            "cost_reduction": "17.8%"
+            "savings_per_15k_rides": "$5,290",
+            "cost_reduction": "33.6%"
         }
     }
 
