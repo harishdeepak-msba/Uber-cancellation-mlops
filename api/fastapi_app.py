@@ -26,6 +26,8 @@ Predicts the probability of a customer cancelling their Uber ride before it begi
 - Customer history computed from training set only
 - Threshold via Youden's J statistic on validation set
 - Business impact: $11,362 savings per 15K rides (72.1% cost reduction)
+
+![Project dashboard](/dashboard)
     """,
     version="1.0.0"
 )
