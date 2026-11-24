@@ -4,6 +4,8 @@ Render.com compatible
 """
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+import os
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import numpy as np
@@ -225,6 +227,14 @@ def predict_batch(requests: list[RideRequest]):
         except Exception as e:
             out.append({"index": i, "error": str(e)})
     return {"predictions": out, "count": len(out)}
+
+@app.get("/dashboard", tags=["Info"])
+def dashboard():
+    base = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(base, "../plots/project_dashboard.png")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Chart not found.")
+    return FileResponse(path, media_type="image/png")
 
 if __name__ == "__main__":
     import uvicorn
