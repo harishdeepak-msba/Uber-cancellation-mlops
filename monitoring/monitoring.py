@@ -31,8 +31,8 @@ CONFIG = {
     "retraining_data_min_rows": 10000,      # Minimum new rows before retraining
     "cost_fn": 15,                           # $ cost per false negative
     "cost_fp": 2,                            # $ cost per false positive
-    "baseline_auc": 0.9990,
-    "baseline_f1":  0.9990,
+    "baseline_auc": 0.7787,
+    "baseline_f1":  0.4976,
     "baseline_cancellation_rate": 0.07,
 }
 
