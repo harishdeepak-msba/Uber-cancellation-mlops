@@ -60,11 +60,11 @@ This project builds a machine learning model to flag high-risk bookings **before
 
 | Model | ROC AUC | F1 Score | Precision | Recall | Threshold |
 |:---|:---:|:---:|:---:|:---:|:---:|
-| Logistic Regression | 0.934 | 0.357 | 0.219 | 97.1% | 0.011 |
-| Random Forest | 0.950 | 0.396 | 0.247 | 99.8% | 0.142 |
-| ⭐ **XGBoost** | **0.964** | **0.496** | **0.332** | **98.7%** | 0.0001 |
+| ⭐ **XGBoost** | **0.767** | **0.253** | **0.162** | **57.2%** | 0.489 |
 
-> **Why these F1 scores?** Class imbalance (7% positives) makes F1 harder to maximise. The models achieve strong AUC and very high recall — catching nearly all cancellations — at the cost of some false alarms. This is the correct trade-off: missing a cancellation costs $15; a false alarm costs only $2.
+> Logistic Regression and Random Forest were not rerun after the second leakage audit below. Their earlier numbers are removed because they used the same leaky inputs.
+
+> **Reading these numbers:** Class imbalance (7% positives) keeps precision low. The model catches 57% of cancellations at a cost of 3,108 false alarms on 15,000 rides. Missing a cancellation costs $15 in this analysis. A false alarm costs $2. These costs are assumptions, not measured values.
 
 ---
 
@@ -72,17 +72,17 @@ This project builds a machine learning model to flag high-risk bookings **before
 
 | Metric | Value |
 |:---|---:|
-| Cancellations caught (True Positives) | 1,036 |
-| Missed cancellations (False Negatives) | 14 |
-| False alarms (False Positives) | 2,089 |
+| Cancellations caught (True Positives) | 601 |
+| Missed cancellations (False Negatives) | 449 |
+| False alarms (False Positives) | 3,108 |
 | Baseline cost — no model | $15,750 |
-| Model cost (FN + FP combined) | $4,388 |
-| **Estimated Savings** | **$11,362** |
-| **Cost Reduction** | **72.1%** |
+| Model cost (FN + FP combined) | $12,951 |
+| **Estimated Savings** | **$2,799** |
+| **Cost Reduction** | **17.8%** |
 
 ---
 
-## 🔍 Leakage Fix — Why AUC Was 1.00
+## 🔍 Leakage Fixes — Why AUC Fell From 1.00 to 0.767
 
 > **This section demonstrates a real-world debugging skill — catching and correcting data leakage.**
 
@@ -112,9 +112,17 @@ X_train['customer_cancel_history'] = c_train.map(cust_cancel_history).fillna(0)
 X_test['customer_cancel_history']  = c_test.map(cust_cancel_history).fillna(0)
 ```
 
-After fixing: **AUC dropped from 1.00 to 0.964** — realistic and deployable.
+After the first fix, AUC dropped from 1.00 to 0.964. That number was still inflated.
 
-> During evaluation, suspiciously perfect AUC = 1.00 was traced to customer-level aggregation features computed on the full dataset before splitting — a classic form of target leakage. After enforcing split-first ordering, AUC settled at a realistic 0.964 for XGBoost.
+### Second Audit: Post-Ride Fields
+
+A later audit found more leakage:
+
+- `Booking Value`, `Payment Method`, `Driver Ratings` and `Customer Rating` are missing for 100% of customer cancellations. They are missing for about 27% to 33% of other rides. The missing-value flags and the `pay_Unknown` dummy revealed the outcome.
+- `Avg CTAT` is missing for 100% of cancellations. It records time after pickup.
+- Training rows counted their own cancellation in `customer_cancel_history`. Training now excludes the row's own label.
+
+After removing these inputs, test AUC is **0.767** on 15,000 held-out rides. Treat 0.767 as the honest estimate. The deployed API now matches the training pipeline on 400 test rows.
 
 ---
 
@@ -132,7 +140,7 @@ Raw Data --> Feature Engineering --> MLflow Tracking --> Model Training
 ```
 
 - [x] Problem framing and exploratory data analysis
-- [x] Feature engineering — 49 features, strict no-leakage policy
+- [x] Feature engineering — 39 features, leakage audited twice
 - [x] Leakage detection and correction — identified and fixed customer history leakage
 - [x] Experiment tracking with MLflow — 3 models with full reproducibility
 - [x] Business cost analysis — dollar value of false negatives vs false positives
@@ -238,7 +246,7 @@ curl -X POST https://uber-cancellation-api.onrender.com/predict \
   "risk_level": "LOW",
   "recommendation": "No action needed. Standard dispatch.",
   "model_version": "XGBoost_v1.0",
-  "threshold_used": 0.0001,
+  "threshold_used": 0.4891,
   "mode": "demo"
 }
 ```

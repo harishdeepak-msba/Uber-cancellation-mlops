@@ -19,13 +19,13 @@ app = FastAPI(
     description="""
 Predicts the probability of a customer cancelling their Uber ride before it begins.
 
-**Model:** XGBoost — AUC = 0.964, trained on 150,000 bookings
+**Model:** XGBoost, test AUC = 0.767, trained on 150,000 bookings
 
 **Key facts:**
-- Uses only features available before the ride starts (no leakage)
-- Customer history computed from training set only
+- Uses only features known at booking time (post-ride fields removed after a leakage audit)
+- Customer history computed from training set only, own label excluded
 - Threshold via Youden's J statistic on validation set
-- Business impact: $11,362 savings per 15K rides (72.1% cost reduction)
+- Business impact: $2,799 savings per 15K rides (17.8% cost reduction), assuming $15 per missed cancellation and $2 per false alarm
 
 ![Project dashboard](/dashboard)
     """,
@@ -68,9 +68,10 @@ class RideRequest(BaseModel):
     pickup_location:          str   = Field(..., example="Saket")
     drop_location:            str   = Field(..., example="Barakhamba Road")
     avg_vtat:                float  = Field(..., example=5.2)
-    avg_ctat:                float  = Field(..., example=3.1)
+    avg_ctat:         Optional[float] = Field(None, example=3.1,
+                                            description="Ignored. Kept for backward compatibility (not known at booking time).")
     payment_method:  Optional[str]  = Field(None, example="UPI",
-                                            description="UPI, Cash, Uber Wallet, Credit Card, Debit Card")
+                                            description="Ignored. Kept for backward compatibility.")
     customer_total_bookings:  int   = Field(1,    example=12)
     customer_cancel_history:  int   = Field(0,    example=1)
 
@@ -84,16 +85,17 @@ class PredictionResponse(BaseModel):
     mode:                     str
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-THRESHOLD   = 0.0001
+THRESHOLD   = 0.4891
 TOP_PICKUPS = ['Khandsa','Barakhamba Road','Saket','Badarpur','Pragati Maidan',
-               'Sector 18 Noida','Connaught Place','Dwarka','Lajpat Nagar','Gurgaon']
-TOP_DROPS   = TOP_PICKUPS
+               'Madipur','AIIMS','Mehrauli','Dwarka Sector 21','Pataudi Chowk']
+TOP_DROPS   = ['Ashram','Basai Dhankot','Lok Kalyan Marg','Narsinghpur','Cyber Hub',
+               'Kalkaji','Kashmere Gate ISBT','Udyog Vihar','Lajpat Nagar','Madipur']
 VEHICLE_TYPES = ['Auto','Go Mini','Go Sedan','Bike','Premier Sedan','eBike','Uber XL']
 
 def risk_label(prob: float):
-    if prob < 0.15:   return "LOW",      "No action needed. Standard dispatch."
-    elif prob < 0.35: return "MEDIUM",   "Monitor closely. Send driver ETA updates."
-    elif prob < 0.65: return "HIGH",     "Send proactive message. Consider retention incentive."
+    if prob < 0.25:   return "LOW",      "No action needed. Standard dispatch."
+    elif prob < THRESHOLD: return "MEDIUM", "Monitor closely. Send driver ETA updates."
+    elif prob < 0.75: return "HIGH",     "Send proactive message. Consider retention incentive."
     else:             return "CRITICAL", "Very high cancellation risk. Apply aggressive retention strategy."
 
 def demo_predict(req: RideRequest) -> float:
@@ -105,7 +107,6 @@ def demo_predict(req: RideRequest) -> float:
     except: pass
     if req.avg_vtat > 8:                     score += 0.05
     if req.customer_cancel_history > 2:      score += 0.08
-    if req.payment_method is None:           score += 0.03
     return min(score, 0.95)
 
 def build_features(req: RideRequest) -> np.ndarray:
@@ -115,38 +116,30 @@ def build_features(req: RideRequest) -> np.ndarray:
     weekday = dt.dayofweek
     feat    = {f: 0.0 for f in feature_names}
     feat.update({
-        "Avg VTAT": req.avg_vtat, "Avg CTAT": req.avg_ctat,
+        "Avg VTAT": req.avg_vtat,
         "hour": float(hour), "day": float(dt.day),
         "month": float(dt.month), "weekday": float(weekday),
         "is_weekend": float(weekday in [5,6]),
         "is_peak": float(hour in [7,8,9,17,18,19,20]),
-        "missing_driver_rating": 1.0, "missing_customer_rating": 1.0,
-        "missing_booking_value": 1.0,
-        "missing_payment": float(req.payment_method is None),
         "customer_total_bookings": float(req.customer_total_bookings),
         "customer_cancel_history": float(req.customer_cancel_history),
     })
-    for vt in VEHICLE_TYPES[1:]:
-        if f"vehicle_{vt}" in feat:
-            feat[f"vehicle_{vt}"] = float(req.vehicle_type == vt)
-    pm = req.payment_method or "Unknown"
-    for p in ['Credit Card','Debit Card','UPI','Uber Wallet','Unknown']:
-        if f"pay_{p}" in feat:
-            feat[f"pay_{p}"] = float(pm == p)
+    def set_flag(name):
+        if name in feat:
+            feat[name] = 1.0
+    set_flag(f"vehicle_{req.vehicle_type}")
     pl = req.pickup_location if req.pickup_location in TOP_PICKUPS else "Other"
-    for loc in TOP_PICKUPS[1:]:
-        if f"pickup_{loc}" in feat:
-            feat[f"pickup_{loc}"] = float(pl == loc)
+    set_flag(f"pickup_{pl}")
     dl = req.drop_location if req.drop_location in TOP_DROPS else "Other"
-    for loc in TOP_DROPS[1:]:
-        if f"drop_{loc}" in feat:
-            feat[f"drop_{loc}"] = float(dl == loc)
-    tp_map = {(0,6):"Night",(6,12):"Morning",(12,17):"Afternoon",(17,21):"Evening",(21,24):"Late"}
-    tp = next((v for (lo,hi),v in tp_map.items() if lo <= hour < hi), "Late")
-    for tper in ["Evening","Late","Morning","Night"]:
-        if f"tp_{tper}" in feat:
-            feat[f"tp_{tper}"] = float(tp == tper)
-    return np.array([[feat.get(f, 0.0) for f in feature_names]])
+    set_flag(f"drop_{dl}")
+    # Same bins as training: pd.cut(hour, [-1,6,12,17,21,24]), right-inclusive
+    if   hour <= 6:  tp = "Night"
+    elif hour <= 12: tp = "Morning"
+    elif hour <= 17: tp = "Afternoon"
+    elif hour <= 21: tp = "Evening"
+    else:            tp = "Late"
+    set_flag(f"tp_{tp}")
+    return np.array([[feat[f] for f in feature_names]])
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 @app.get("/", tags=["Info"])
@@ -173,15 +166,15 @@ def model_info():
     return {
         "model_type": "XGBoost Classifier",
         "version":    "1.0.0",
-        "features":   len(feature_names) if feature_names else 49,
+        "features":   len(feature_names) if feature_names else 39,
         "threshold":  THRESHOLD,
         "performance": {
-            "ROC_AUC": 0.9638, "F1_Score": 0.4963,
-            "Precision": 0.3315, "Recall": 0.9867
+            "ROC_AUC": 0.7671, "F1_Score": 0.2526,
+            "Precision": 0.162, "Recall": 0.5724
         },
         "business_impact": {
-            "savings_per_15k_rides": "$11,362",
-            "cost_reduction": "72.1%"
+            "savings_per_15k_rides": "$2,799",
+            "cost_reduction": "17.8%"
         }
     }
 
